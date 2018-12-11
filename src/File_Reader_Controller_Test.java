@@ -1,17 +1,20 @@
 import java.io.*;
+import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * @author SENMEN
- * 读取器类的测试用例，
- * 构建一个容纳byte数据的.bin文件使用读取器进行读取
+ * 读取控制器的测试用例
+ * 构建一个容纳byte数据的.bin文件，使用读取控制器进行读取
  * 最后匹配读取前后的数据
  * 构造对象后，调用成员函数test_Start()开始测试
  */
-public class File_Reader_Test {
+
+public class File_Reader_Controller_Test {
     //日志类
     private static Logger logger = Logger.getLogger(File_Reader_Test.class.getName());
+
 
     private static final int DATA_LENGTH = 1000;
 
@@ -21,16 +24,16 @@ public class File_Reader_Test {
     private String file_Path = "Test";
 
     //将被测试的读取器
-    private File_Reader file_Reader_To_Test;
+    private File_Reader_Controller file_Reader_Controller_To_Test;
 
-    public File_Reader_Test(){
+    public File_Reader_Controller_Test(){
         init_Data();
         write_Data_To_File();
         assert check_Data_Written()==true;
 
-        //初始化读取器
-        file_Reader_To_Test = new File_Reader(filename, 0, DATA_LENGTH, 0);
-        logger.log(Level.INFO,"读取器已初始化");
+        //初始化读取控制器
+        file_Reader_Controller_To_Test = File_Reader_Controller.getInstance();
+        logger.log(Level.INFO,"读取控制器已初始化");
 
     }
 
@@ -39,39 +42,58 @@ public class File_Reader_Test {
      * @return 当测试结果合法时返回true，不合法时返回false
      */
     public boolean test_Start(){
-        //开启新的线程使用读取器读取刚创建的文件file_Reader_Test.bin
-        Thread test_Thread = new Thread(file_Reader_To_Test);
 
-        logger.log(Level.INFO,"开启读取线程："+file_Reader_To_Test.getThread_Id());
-        test_Thread.start();
+        //初始化并运行读取控制器
+        file_Reader_Controller_To_Test.init_File_Readers_Array(filename);
+        file_Reader_Controller_To_Test.run_Readers_Threads();
 
-        int reading_Timmer = 0;
-        int TIME_INTERVAL_READING = 100;
+        //比较读取出的数据和正确的文件长度
+        int read_Data_Length = 0;
+        for(Iterator<byte[]> it = file_Reader_Controller_To_Test.get_Data_Array().iterator();
+            it.hasNext();){
+            byte[] pres_Bytes = it.next();
+            read_Data_Length += pres_Bytes.length;
+        }
+        if(read_Data_Length != DATA_LENGTH){
+            logger.log(Level.WARNING,"检测出错误：读取的数据长度不正确,原长度为"+DATA_LENGTH+
+                    "读取的数据长度为"+read_Data_Length);
+            return false;
+        }
+        else{
+            logger.log(Level.INFO,"读取的数据长度正确");
+        }
 
-        //输出读取结果
-        while(true){
-            if(file_Reader_To_Test.is_Read_Finished()){
-                logger.log(Level.INFO,"读取完成");
+        //逐一匹配读取出的数据和原数据内容是否一致
+        byte[] data_To_Test = new byte[DATA_LENGTH];
+        int data_To_Test_Walker = 0;
 
-                //检验读取结果的正确性
-                for(int i=0; i<file_Reader_To_Test.getData().length; i++){
-                    if(file_Reader_To_Test.getData()[i]!=data[i]){
-                        logger.log(Level.SEVERE,"检验出读取错误，在第"+i+"个字节处\n" +
-                                "文件中的数据为："+data[i]+"\n"+
-                                "读取后的数据为："+file_Reader_To_Test.getData()[i]);
-                        return false;
-                    }
-                }
-                logger.log(Level.INFO,"测试完毕，读取器组件运行正常");
-                break;
-            }
-            else{
-                if(reading_Timmer % TIME_INTERVAL_READING==0){
-                    logger.log(Level.INFO,"读取中...");
-                }
-                reading_Timmer++;
+        logger.log(Level.INFO,"开始从读取器中转移字节数据");
+        for(Iterator<byte[]> it = file_Reader_Controller_To_Test.get_Data_Array().iterator();
+            it.hasNext();){
+            byte[] pres_Bytes = it.next();
+            for(int i=0; i<pres_Bytes.length; i++){
+                data_To_Test[data_To_Test_Walker++] = pres_Bytes[i];
             }
         }
+
+        logger.log(Level.INFO,"数据转移完毕，开始匹配");
+
+        boolean return_Flag = true;
+        for(int i=0; i<DATA_LENGTH; i++){
+            if(data_To_Test[i] != data[i]){
+                logger.log(Level.WARNING,"检测出错误：读取的第"+i+"个数据不正确" +
+                        "原数据为"+data[i]+"读取后数据为"+data_To_Test[i]);
+
+                for(int j=0; j<DATA_LENGTH; j++){
+                    System.out.print("读取前："+data[j]+" ");
+                    System.out.println("读取后："+data_To_Test[j]);
+                }
+
+                return false;
+            }
+        }
+
+        logger.log(Level.INFO,"测试完毕，读取控制器组件运行正常");
 
         return true;
 
@@ -85,6 +107,7 @@ public class File_Reader_Test {
             byte newByte = (byte)(i%128);
             data[i] = newByte;
         }
+        logger.log(Level.INFO,"测试数组初始化完毕");
     }
 
     /**
@@ -99,14 +122,12 @@ public class File_Reader_Test {
                 logger.log(Level.INFO,"测试文件存放目录已创建");
             }
             else{
-                logger.log(Level.SEVERE,"测试文件存放目录创建失败");
+                logger.log(Level.WARNING,"测试文件存放目录创建失败");
             }
 
             OutputStream out = new FileOutputStream(filename);
 
-            for(int i = 0; i < data.length; i++){
-                out.write(data[i]);
-            }
+            out.write(data);
 
             System.out.println();
             out.close();
@@ -157,6 +178,5 @@ public class File_Reader_Test {
 
         return true;
     }
-
 
 }
