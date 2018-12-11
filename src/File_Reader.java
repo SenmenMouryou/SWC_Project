@@ -13,6 +13,9 @@ public class File_Reader implements Runnable{
     //日志类
     private static Logger logger = Logger.getLogger(File_Reader.class.getName());
 
+    //一次读取的字节数
+    private int BUF_SIZE = 256;
+
     //容纳数据的Byte数组
     private byte[] data;
     public byte[] getData() {
@@ -65,15 +68,13 @@ public class File_Reader implements Runnable{
 
     //文件的随机访问流
     private RandomAccessFile raf = null;
-    private BufferedInputStream buf_In = null;
 
     /**
      * 打开文件
      */
     private void open_File() {
         try {
-//            raf = new RandomAccessFile(filename, "r");
-            buf_In = new BufferedInputStream(new FileInputStream(filename));
+            raf = new RandomAccessFile(filename, "r");
             logger.log(Level.INFO,"文件"+filename+"打开成功");
         } catch (FileNotFoundException e) {
             logger.log(Level.SEVERE,"文件"+filename+"打开失败",e);
@@ -85,27 +86,13 @@ public class File_Reader implements Runnable{
      */
     private void set_File_Pointer(){
         try {
-//          raf.seek(start_Read_Pointer);
-            buf_In.skip(start_Read_Pointer);
+            raf.seek(start_Read_Pointer);
             logger.log(Level.INFO,"文件指针设置成功，位置:"+start_Read_Pointer);
         } catch (IOException e) {
             logger.log(Level.SEVERE,"文件指针设置失败",e);
         }
 
     }
-
-    /**
-     * 从文件中读取1 byte数据
-     * @return 读取的1字节数据
-     */
-    private byte read_byte_From_File() throws IOException {
-        byte has_Read = 0;
-
-        has_Read = raf.readByte();
-
-        return has_Read;
-    }
-
 
     @Override
     public void run() {
@@ -116,37 +103,42 @@ public class File_Reader implements Runnable{
 
         //初始化读入byte的计数器
         int read_Count = 0;
+        //计算读取次数
+        int max_Read_Times = bytes_To_Read/BUF_SIZE+1;
+        //下一个开始读的位置
+        int next_pos = 0;
 
         //从文件中读取数据
         logger.log(Level.INFO,"线程"+thread_Id+"开始读取数据...");
-        assert buf_In!=null;
+        assert raf!=null;
         while(true){
             try {
-                read_byte_From_File();
+                //一次读取BUF_SIZE个字节到data数组
+                raf.read(data, next_pos, BUF_SIZE);
             }catch (IOException e){
-                logger.log(Level.WARNING,"字节数读取错误，替换为上一个合法数据",e);
-                //错误处理：如果读取失败，将数据设为上一个合法数据，如果是第一个则设为0
-                if(read_Count>0) {
-                    data[read_Count] = data[read_Count - 1];
-                }
-                else{
-                    data[read_Count] = 0;
-                }
+                logger.log(Level.SEVERE,"字节数读取错误",e);
             }
-
             //更新计数器
             read_Count++;
+            //更新下一个起读位置
+            next_pos += BUF_SIZE;
+            //若下一个起读位置是最后一处则在读取末尾后结束读入
+            if(next_pos + BUF_SIZE >= bytes_To_Read){
+                try {
+                    //读取末尾
+                    raf.read(data, next_pos, bytes_To_Read-next_pos);
+                }catch (IOException e){
+                    logger.log(Level.INFO,"字节读取错误",e);
+                }
+                read_Finished_Flag = true;
+                logger.log(Level.INFO,"线程"+thread_Id+"读取完毕");
+                break;
+            }
 
             try{
                 Thread.sleep(1);
             }catch (InterruptedException e){
                 logger.log(Level.SEVERE, "线程中断异常",e);
-            }
-            //计数器超出本读取器的读取范围则结束读入
-            if(read_Count>=bytes_To_Read){
-                read_Finished_Flag = true;
-                logger.log(Level.INFO,"线程"+thread_Id+"读取完毕");
-                break;
             }
         }
     }
